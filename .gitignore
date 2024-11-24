@@ -15,3 +15,5 @@ pyrightconfig.json
 
 working/
 .zed/
+package-lock.json
+lightweight_charts/js/*

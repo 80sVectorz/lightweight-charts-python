@@ -8,7 +8,8 @@ import { HorizontalLine } from "../horizontal-line/horizontal-line";
 import { RayLine } from "../horizontal-line/ray-line";
 import { VerticalLine } from "../vertical-line/vertical-line";
 import { Handler } from "./handler";
-// Fix inconsistent imports of DrawingOptions
+import { Measure } from "../measure/measure";
+
 
 interface Icon {
     div: HTMLDivElement,
@@ -19,6 +20,7 @@ interface Icon {
 declare const window: GlobalParams
 
 export class ToolBox {
+    private static readonly MEASURE_SVG: string = '<rect x="12" y="4" width="1" height="20"/><rect x="4" y="12" width="20" height="1"/>';
     private static readonly TREND_SVG: string = '<rect x="3.84" y="13.67" transform="matrix(0.7071 -0.7071 0.7071 0.7071 -5.9847 14.4482)" width="21.21" height="1.56"/><path d="M23,3.17L20.17,6L23,8.83L25.83,6L23,3.17z M23,7.41L21.59,6L23,4.59L24.41,6L23,7.41z"/><path d="M6,20.17L3.17,23L6,25.83L8.83,23L6,20.17z M6,24.41L4.59,23L6,21.59L7.41,23L6,24.41z"/>';
     private static readonly HORZ_SVG: string = '<rect x="4" y="14" width="9" height="1"/><rect x="16" y="14" width="9" height="1"/><path d="M11.67,14.5l2.83,2.83l2.83-2.83l-2.83-2.83L11.67,14.5z M15.91,14.5l-1.41,1.41l-1.41-1.41l1.41-1.41L15.91,14.5z"/>';
     private static readonly RAY_SVG: string = '<rect x="8" y="14" width="17" height="1"/><path d="M3.67,14.5l2.83,2.83l2.83-2.83L6.5,11.67L3.67,14.5z M7.91,14.5L6.5,15.91L5.09,14.5l1.41-1.41L7.91,14.5z"/>';
@@ -61,6 +63,7 @@ export class ToolBox {
     private _makeToolBox() {
         let div = document.createElement('div')
         div.classList.add('toolbox');
+        this.buttons.push(this._makeToolBoxElement(Measure, 'KeyM', ToolBox.MEASURE_SVG));
         this.buttons.push(this._makeToolBoxElement(TrendLine, 'KeyT', ToolBox.TREND_SVG))
         this.buttons.push(this._makeToolBoxElement(HorizontalLine, 'KeyH', ToolBox.HORZ_SVG));
         this.buttons.push(this._makeToolBoxElement(RayLine, 'KeyR', ToolBox.RAY_SVG));
