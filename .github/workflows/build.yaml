@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true  # Use the repo token for pushing changes
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
@@ -27,3 +29,10 @@ jobs:
 
       - name: Run Build Script
         run: ./build.sh
+
+      - name: Update resources
+        uses: test-room-7/action-update-file@v2.0.0
+        with:
+            file-path: dist/*
+            commit-msg: Update resources
+            github-token: ${{ secrets.GITHUB_TOKEN }}
