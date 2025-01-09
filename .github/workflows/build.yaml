@@ -33,6 +33,9 @@ jobs:
       - name: Update resources
         uses: test-room-7/action-update-file@v2.0.0
         with:
-            file-path: dist/*
+            file-path: lightweight_charts_/bundle.js
+            file-path: lightweight_charts/js/bundle.js
+            file-path: lightweight_charts/js/lightweight_charts.js
+            file-path: lightweight_charts/js/style.css
             commit-msg: Update resources
             github-token: ${{ secrets.GITHUB_TOKEN }}
