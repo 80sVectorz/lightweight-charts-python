@@ -1,10 +1,15 @@
 name: Build
 
+
+
 on:
   push:
     branches:
       - main
   pull_request:
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
 
 jobs:
   build:
@@ -30,13 +35,21 @@ jobs:
       - name: Run Build Script
         run: ./build.sh
 
-      - name: Update resources
-        uses: test-room-7/action-update-file@v2.0.0
-        with:
-            file-path: | 
-              lightweight_charts_/js/bundle.js
-              lightweight_charts/js/bundle.js
-              lightweight_charts/js/lightweight-charts.js
-              lightweight_charts/js/styles.css
-            commit-msg: Update resources
-            github-token: ${{ secrets.GITHUB_TOKEN }}
+      # - name: Update resources
+      #   uses: test-room-7/action-update-file@v2.0.0
+      #   with:
+      #       file-path: | 
+      #         lightweight_charts_/js/bundle.js
+      #         lightweight_charts/js/bundle.js
+      #         lightweight_charts/js/lightweight-charts.js
+      #         lightweight_charts/js/styles.css
+      #       commit-msg: Update resources
+      #       github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add lightweight_charts_/js/bundle.js lightweight_charts/js/bundle.js lightweight_charts/js/lightweight-charts.js lightweight_charts/js/styles.css
+          git commit -m "Update resources [skip ci]" || echo "No changes to commit"
+          git push
