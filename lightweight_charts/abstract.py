@@ -3,8 +3,9 @@ import json
 import os
 from base64 import b64decode
 from datetime import datetime
-from typing import Callable, Union, Literal, List, Optional
+from typing import Callable, Union, Literal, List, Optional, Any
 import pandas as pd
+from webview.errors import JavascriptException
 
 from .table import Table
 from .toolbox import ToolBox
@@ -12,7 +13,7 @@ from .drawings import Box, HorizontalLine, RayLine, TrendLine, TwoPointDrawing, 
 from .topbar import TopBar
 from .util import (
     BulkRunScript, Pane, Events, IDGen, as_enum, jbool, js_json, TIME, NUM, FLOAT,
-    LINE_STYLE, MARKER_POSITION, MARKER_SHAPE, CROSSHAIR_MODE,
+    LINE_STYLE, MARKER_POSITION, MARKER_SHAPE, CANDLE_SHAPE, CROSSHAIR_MODE,
     PRICE_SCALE_MODE, marker_position, marker_shape, js_data,
 )
 
@@ -446,21 +447,27 @@ class SeriesCommon(Pane):
 
 
 class Line(SeriesCommon):
-    def __init__(self, chart, name, color, style, width, price_line, price_label, price_scale_id=None, crosshair_marker=True):
-
+    def __init__(
+            self, chart, name, color, style, width, price_line, price_label, 
+            group, legend_symbol, price_scale_id, crosshair_marker=True):
         super().__init__(chart, name)
         self.color = color
+        self.group = group  # Store group for legend grouping
+        self.legend_symbol = legend_symbol  # Store the legend symbol
 
+        # Initialize series with configuration options
         self.run_script(f'''
             {self.id} = {self._chart.id}.createLineSeries(
                 "{name}",
                 {{
+                    group: '{group}',
                     color: '{color}',
                     lineStyle: {as_enum(style, LINE_STYLE)},
                     lineWidth: {width},
                     lastValueVisible: {jbool(price_label)},
                     priceLineVisible: {jbool(price_line)},
                     crosshairMarkerVisible: {jbool(crosshair_marker)},
+                    legendSymbol: '{legend_symbol}',
                     priceScaleId: {f'"{price_scale_id}"' if price_scale_id else 'undefined'}
                     {"""autoscaleInfoProvider: () => ({
                             priceRange: {
@@ -472,8 +479,6 @@ class Line(SeriesCommon):
                 }}
             )
         null''')
-
-    # def _set_trend(self, start_time, start_value, end_time, end_value, ray=False, round=False):
     #     if round:
     #         start_time = self._single_datetime_format(start_time)
     #         end_time = self._single_datetime_format(end_time)
@@ -508,18 +513,24 @@ class Line(SeriesCommon):
 
 
 class Histogram(SeriesCommon):
-    def __init__(self, chart, name, color, price_line, price_label, scale_margin_top, scale_margin_bottom):
+    def __init__(
+            self, chart, name, color, price_line, price_label, group, legend_symbol, scale_margin_top, scale_margin_bottom):
         super().__init__(chart, name)
         self.color = color
+        self.group = group  # Store group for legend grouping
+        self.legend_symbol = legend_symbol  # Store legend symbol
+
         self.run_script(f'''
         {self.id} = {chart.id}.createHistogramSeries(
             "{name}",
             {{
+                group: '{group}',
                 color: '{color}',
                 lastValueVisible: {jbool(price_label)},
                 priceLineVisible: {jbool(price_line)},
+                legendSymbol: '{legend_symbol}',
                 priceScaleId: '{self.id}',
-                priceFormat: {{type: "volume"}},
+                priceFormat: {{type: "volume"}}
             }},
             // precision: 2,
         )
@@ -549,6 +560,217 @@ class Histogram(SeriesCommon):
         {self.id}.series.priceScale().applyOptions({{
             scaleMargins: {{top: {scale_margin_top}, bottom: {scale_margin_bottom}}}
         }})''')
+
+
+
+class Area(SeriesCommon):
+    def __init__(
+            self, chart, name, top_color, bottom_color, invert, line_color,
+            style, width, price_line, price_label, group, legend_symbol, price_scale_id, crosshair_marker=True):
+        super().__init__(chart, name) 
+        self.color = line_color
+        self.topColor = top_color
+        self.bottomColor = bottom_color
+        self.group = group  # Store group for legend grouping
+        self.legend_symbol = legend_symbol  # Store legend symbol
+
+        self.run_script(f'''
+            {self.id} = {self._chart.id}.createAreaSeries(
+                "{name}",
+                {{
+                    group: '{group}',
+                    topColor: '{top_color}',
+                    bottomColor: '{bottom_color}',
+                    invertFilledArea: {jbool(invert)},
+                    color: '{line_color}',
+                    lineColor: '{line_color}',
+                    lineStyle: {as_enum(style, LINE_STYLE)},
+                    lineWidth: {width},
+                    lastValueVisible: {jbool(price_label)},
+                    priceLineVisible: {jbool(price_line)},
+                    crosshairMarkerVisible: {jbool(crosshair_marker)},
+                    legendSymbol: '{legend_symbol}',
+                    priceScaleId: {f'"{price_scale_id}"' if price_scale_id else 'undefined'}
+                    {"""autoscaleInfoProvider: () => ({
+                            priceRange: {
+                                minValue: 1_000_000_000,
+                                maxValue: 0,
+                            },
+                        }),
+                    """ if chart._scale_candles_only else ''}
+                }}
+            )
+        null''')
+    def delete(self):
+        """
+        Irreversibly deletes the line, as well as the object that contains the line.
+        """
+        self._chart._lines.remove(self) if self in self._chart._lines else None
+        self.run_script(f'''
+            {self.id}legendItem = {self._chart.id}.legend._lines.find((line) => line.series == {self.id}.series)
+            {self._chart.id}.legend._lines = {self._chart.id}.legend._lines.filter((item) => item != {self.id}legendItem)
+
+            if ({self.id}legendItem) {{
+                {self._chart.id}.legend.div.removeChild({self.id}legendItem.row)
+            }}
+
+            {self._chart.id}.chart.removeSeries({self.id}.series)
+            delete {self.id}legendItem
+            delete {self.id}
+        ''')
+
+
+class Bar(SeriesCommon):
+    def __init__(
+            self, chart, name, up_color, down_color, open_visible, thin_bars,
+            price_line, price_label, group, legend_symbol, price_scale_id):
+        super().__init__(chart, name)
+        self.up_color = up_color
+        self.down_color = down_color
+        self.group = group  # Store group for legend grouping
+        self.legend_symbol = legend_symbol if isinstance(legend_symbol, list) else [legend_symbol, legend_symbol]  # Store legend symbols
+
+        self.run_script(f'''
+        {self.id} = {chart.id}.createBarSeries(
+            "{name}",
+            {{
+                group: '{group}',
+                color: '{up_color}',
+                upColor: '{up_color}',
+                downColor: '{down_color}',
+                openVisible: {jbool(open_visible)},
+                thinBars: {jbool(thin_bars)},
+                lastValueVisible: {jbool(price_label)},
+                priceLineVisible: {jbool(price_line)},
+                legendSymbol: {json.dumps(self.legend_symbol)},
+                priceScaleId: {f'"{price_scale_id}"' if price_scale_id else 'undefined'}
+            }}
+            
+        )''')
+    def set(self, df: Optional[pd.DataFrame] = None):
+        if df is None or df.empty:
+            self.run_script(f'{self.id}.series.setData([])')
+            self.candle_data = pd.DataFrame()
+            return
+        df = self._df_datetime_format(df)
+        self.data = df.copy()
+        self._last_bar = df.iloc[-1]
+        self.run_script(f'{self.id}.series.setData({js_data(df)})')
+
+    def update(self, series: pd.Series, _from_tick=False):
+        """
+        Updates the data from a bar;
+        if series['time'] is the same time as the last bar, the last bar will be overwritten.\n
+        :param series: labels: date/time, open, high, low, close, volume (if using volume).
+        """
+        series = self._series_datetime_format(series) if not _from_tick else series
+        if series['time'] != self._last_bar['time']:
+            self.data.loc[self.data.index[-1]] = self._last_bar
+            self.data = pd.concat([self.data, series.to_frame().T], ignore_index=True)
+            self._chart.events.new_bar._emit(self)
+
+        self._last_bar = series
+        self.run_script(f'{self.id}.series.update({js_data(series)})')
+    def delete(self):
+        """
+        Irreversibly deletes the bar series.
+        """
+        self.run_script(f'''
+            {self.id}legendItem = {self._chart.id}.legend._lines.find((line) => line.series == {self.id}.series)
+            {self._chart.id}.legend._lines = {self._chart.id}.legend._lines.filter((item) => item != {self.id}legendItem)
+
+            if ({self.id}legendItem) {{
+                {self._chart.id}.legend.div.removeChild({self.id}legendItem.row)
+            }}
+
+            {self._chart.id}.chart.removeSeries({self.id}.series)
+            delete {self.id}legendItem
+            delete {self.id}
+        ''')
+        
+class CustomCandle(SeriesCommon):
+    def __init__(
+            self,
+            chart,
+            name: str,
+            up_color: str ,
+            down_color: str ,
+            border_up_color: str,
+            border_down_color: str ,
+            wick_up_color: str ,
+            wick_down_color: str ,
+            wick_visible: bool = True,
+            border_visible: bool= True,
+            bar_width: float = 0.8,
+            radius: Optional[float] = .3,
+            shape: str = 'Rectangle',
+            combineCandles: int = 1,
+            line_width: int = 1,
+            line_style: LINE_STYLE = 'solid',
+            price_line: bool = True,
+            price_label: bool = True,
+            group: str = '',
+            legend_symbol: Union[str, List[str]] = ['⬤', '⬤'],
+            price_scale_id: Optional[str] = None,
+
+        ):
+        super().__init__(chart, name)
+        self.up_color = up_color
+        self.down_color = down_color
+        self.group = group  # Store group for legend grouping
+        self.legend_symbol = legend_symbol if isinstance(legend_symbol, list) else [legend_symbol, legend_symbol]
+
+        # Define the radius function as a JavaScript function string if none provided
+
+        # Run the JavaScript to initialize the series with the provided options
+        self.run_script(f'''
+            {self.id} = {chart.id}.createCustomOHLCSeries(
+                "{name}",
+                {{
+                    group: '{group}',
+                    upColor: '{up_color}',
+                    downColor: '{down_color}',
+                    borderUpColor: '{border_up_color}',
+                    borderDownColor: '{border_down_color}',
+                    wickUpColor: '{wick_up_color or border_up_color}',
+                    wickDownColor: '{wick_down_color or border_down_color}',
+                    wickVisible: {jbool(wick_visible)},
+                    borderVisible: {jbool(border_visible)},
+                    barSpacing: {bar_width},
+                    radius: {radius},
+                    shape: '{shape}',
+                    lastValueVisible: {jbool(price_label)},
+                    priceLineVisible: {jbool(price_line)},
+                    legendSymbol: {json.dumps(self.legend_symbol)},
+                    priceScaleId: {f'"{price_scale_id}"' if price_scale_id else 'undefined'},
+                    seriesType: "Ohlc",
+                    chandelierSize: {combineCandles},
+                    lineStyle: {as_enum(line_style, LINE_STYLE)},
+                    lineWidth: {line_width},
+
+                }}
+            )
+        null''')
+
+    def set(self, df: Optional[pd.DataFrame] = None):
+        if df is None or df.empty:
+            self.run_script(f'{self.id}.series.setData([])')
+            self.data = pd.DataFrame()
+            return
+        df = self._df_datetime_format(df)
+        self.data = df.copy()
+        self._last_bar = df.iloc[-1]
+        self.run_script(f'{self.id}.series.setData({js_data(df)})')
+
+    def update(self, series: pd.Series):
+        series = self._series_datetime_format(series)
+        if series['time'] != self._last_bar['time']:
+            self.data.loc[self.data.index[-1]] = self._last_bar
+            self.data = pd.concat([self.data, series.to_frame().T], ignore_index=True)
+            self._chart.events.new_bar._emit(self)
+
+        self._last_bar = series
+        self.run_script(f'{self.id}.series.update({js_data(series)})')
 
 
 class Candlestick(SeriesCommon):
@@ -710,6 +932,167 @@ class Candlestick(SeriesCommon):
             }}
         }})''')
 
+#class PositionPlot(SeriesCommon):
+#    def __init__(
+#        self,
+#        chart,
+#        name: str,
+#        side: str = "long",  # 'long' or 'short'
+#        mode: str = "relative",
+#        background_color_stop: str = "rgba(255,0,0,0.2)",
+#        background_color_target: str = "rgba(0,255,0,0.2)",
+#        price_line: bool = True,
+#        price_label: bool = True,
+#        group: str = "Position",
+#        legend_symbol: str = "⚑",
+#        auto: bool = True,
+#    ):
+#        super().__init__(chart, name)
+#        self.group = group
+#        self.legend_symbol = legend_symbol
+#
+#        if side not in ("long", "short"):
+#            raise ValueError("side must be 'long' or 'short'")
+#        if mode not in ("relative", "absolute"):
+#            raise ValueError("mode must be 'relative' or 'absolute'")
+#
+#        # Create trade series in the JS environment
+#        js_code = f"""
+#        {self.id} = {chart.id}.createTradeSeries("{name}", {{
+#            name: "{name}",
+#            group: "{group}",
+#            side: "{side}",
+#            mode: "{mode}",
+#            backgroundColorStop: "{background_color_stop}",
+#            backgroundColorTarget: "{background_color_target}",
+#            lastValueVisible: {str(price_label).lower()},
+#            priceLineVisible: {str(price_line).lower()},
+#            legendSymbol: "{legend_symbol}",
+#            auto: {str(auto).lower()}
+#        }});
+#        """
+#        try:
+#            self.run_script(js_code)
+#        except JavascriptException as e:
+#            raise RuntimeError(f"Failed to create trade series. JS Error: {e}")
+#
+#    def set(self, df: Optional[pd.DataFrame] = None, format_cols: bool = True):
+#        if df is None or df.empty:
+#            self.run_script(f'''{self.id}.series.setData([])''')
+#            self.data = pd.DataFrame()
+#            return
+#        if format_cols:
+#            df = self._df_datetime_format(df, exclude_lowercase=self.name)
+#        if not df.empty:
+#           # if 'entry_price' not in df:
+#           #     raise NameError(f'No column named "{'entry_price'}".')
+#            df['value'] = df['entry']#.rename(columns={self.name: 'value'})
+#        self.data = df.copy()
+#        self._last_bar = df.iloc[-1]
+#        self.run_script(f'''{self.id}.series.setData({js_data(df)}); ''')
+#    def delete(self):
+#        """
+#        Irreversibly deletes the trade series.
+#        """
+#        self.run_script(f'''
+#            {self.id}legendItem = {self._chart.id}.legend._lines.find((line) => line.series == {self.id}.series)
+#            {self._chart.id}.legend._lines = {self._chart.id}.legend._lines.filter((item) => item != {self.id}legendItem)
+#
+#            if ({self.id}legendItem) {{
+#                {self._chart.id}.legend.div.removeChild({self.id}legendItem.row)
+#            }}
+#
+#            {self._chart.id}.chart.removeSeries({self.id}.series)
+#            delete {self.id}legendItem
+#            delete {self.id}
+#        ''')
+#    def initiate_trade(
+#        self,
+#        time: Optional[Any] = None,
+#        entry: float = 0.0,
+#        stop: Optional[float] = None,
+#        target: Optional[float] = None,
+#        action: str = "entry",
+#        amount: float = 1.0,
+#        display_info: str = "",
+#    ) -> None:
+#        """
+#        Initiates or updates a trade on the PositionPlot by inserting one new data point
+#        into the trade series. If `time` is not provided, this method attempts to fetch
+#        the last bar's time from the base series in the trade series' options.
+#        """
+#        time_str = self._get_time_or_last_bar(time)
+#
+#        trade_point = {
+#            "time": time_str,
+#            "entry": entry,
+#            "stop": stop if stop is not None else None,
+#            "target": target if target is not None else None,
+#            "action": action,
+#            "amount": amount,
+#            "displayInfo": display_info,
+#        }
+#
+#        trade_json = js_data([trade_point])[1:-1]  # turn list -> single object
+#        js_code = f"{self.id}.series.update({trade_json});"
+#        self.run_script(js_code)
+#    def close_trade(
+#        self,
+#        time: Optional[Any] = None,
+#        display_info: str = "",
+#    ) -> None:
+#        """
+#        Closes an existing trade on the PositionPlot by sending an update 
+#        with action='close'. If `time` is not provided, we attempt to fetch 
+#        the last bar's time from the base series in the trade series' options.
+#
+#        :param time: The time at which the trade is closed. 
+#                    If None, fetch from the base series' latest bar or fallback to "now".
+#        :param display_info: Optional text info to display on the chart regarding the close.
+#        """
+#        time_str = self._get_time_or_last_bar(time)
+#
+#        # 3) Build the trade point dictionary, with action='close'
+#        trade_point = {
+#            "time": time_str,
+#            "action": "close",
+#            "displayInfo": display_info,
+#        }
+#
+#        # 4) Convert to JS object
+#        trade_json = js_data([trade_point])[1:-1]  # remove the surrounding [ ]
+#
+#        # 5) Send the update to the trade series
+#        js_code = f"{self.id}.series.update({trade_json});"
+#        self.run_script(js_code)
+#
+#    def _get_time_or_last_bar(self, time: Optional[Any]) -> str:
+#        """
+#        Returns a JS-friendly time string:
+#        - If `time` is provided, convert it.
+#        - Otherwise, fetch the last bar's time from baseSeries or fallback to "now".
+#        """
+#        if time is not None:
+#            return self._convert_time(time)
+#
+#        # No time -> fetch from base series
+#        js_fetch_time = f"""
+#        (function() {{
+#            const baseSeries = {self.id}.series.options().baseSeries;
+#            if (!baseSeries) return null;
+#            const data = baseSeries.data();
+#            if (!data || data.length === 0) return null;
+#            return data[data.length - 1].time;
+#        }})();
+#        """
+#        last_bar_time = self.run_script(js_fetch_time)
+#        if last_bar_time is None:
+#            # fallback to "now"
+#            last_bar_time = pd.Timestamp.now().isoformat()
+#
+#        return self._convert_time(last_bar_time)
+
+
 
 class AbstractChart(Candlestick, Pane):
     def __init__(self, window: Window, width: float = 1.0, height: float = 1.0,
@@ -723,7 +1106,7 @@ class AbstractChart(Candlestick, Pane):
         self._height = height
         self.events: Events = Events(self)
 
-        from lightweight_charts.polygon import PolygonAPI
+        from lightweight_charts_.polygon import PolygonAPI
         self.polygon: PolygonAPI = PolygonAPI(self)
 
         self.run_script(
@@ -742,28 +1125,214 @@ class AbstractChart(Candlestick, Pane):
         self.run_script(f'{self.id}.chart.timeScale().fitContent()')
 
     def create_line(
-            self, name: str = '', color: str = 'rgba(214, 237, 255, 0.6)',
-            style: LINE_STYLE = 'solid', width: int = 2,
-            price_line: bool = True, price_label: bool = True, price_scale_id: Optional[str] = None
-    ) -> Line:
+            self, 
+            name: str = '', 
+            color: str = 'rgba(214, 237, 255, 0.6)',
+            style: LINE_STYLE = 'solid', 
+            width: int = 2,
+            price_line: bool = True, 
+            price_label: bool = True, 
+            group: str = '',
+            legend_symbol: str = '', 
+            price_scale_id: Optional[str] = None
+        ) -> Line:
         """
         Creates and returns a Line object.
         """
-        self._lines.append(Line(self, name, color, style, width, price_line, price_label, price_scale_id))
+        
+        symbol_styles = {
+            'solid':'―',
+            'dotted':'··',
+            'dashed':'--',
+            'large_dashed':'- -',
+            'sparse_dotted':"· ·",
+        }
+        if legend_symbol == '':
+            legend_symbol = symbol_styles.get(style, '━')  # Default to 'solid' if style is unrecognized
+
+        if not isinstance(legend_symbol, str):
+            raise TypeError("legend_symbol must be a string for Line series.")
+        
+        self._lines.append(Line(
+            self, name, color, style, width, price_line, price_label, 
+            group, legend_symbol, price_scale_id
+        ))
         return self._lines[-1]
 
     def create_histogram(
-            self, name: str = '', color: str = 'rgba(214, 237, 255, 0.6)',
-            price_line: bool = True, price_label: bool = True,
-            scale_margin_top: float = 0.0, scale_margin_bottom: float = 0.0
-    ) -> Histogram:
+            self, 
+            name: str = '', 
+            color: str = 'rgba(214, 237, 255, 0.6)',
+            price_line: bool = True, 
+            price_label: bool = True,
+            group: str = '', 
+            legend_symbol: str = '▥',
+            scale_margin_top: float = 0.0, 
+            scale_margin_bottom: float = 0.0
+        ) -> Histogram:
         """
         Creates and returns a Histogram object.
         """
+        if not isinstance(legend_symbol, str):
+            raise TypeError("legend_symbol must be a string for Histogram series.")
+        
         return Histogram(
-            self, name, color, price_line, price_label,
-            scale_margin_top, scale_margin_bottom)
+            self, name, color, price_line, price_label, 
+            group, legend_symbol, scale_margin_top, scale_margin_bottom
+        )
 
+    def create_area(
+            self, 
+            name: str = '', 
+            top_color: str = 'rgba(0, 100, 0, 0.5)',
+            bottom_color: str = 'rgba(138, 3, 3, 0.5)', 
+            invert: bool = False, 
+            color: str = 'rgba(0,0,255,1)', 
+            style: LINE_STYLE = 'solid',
+            width: int = 2, 
+            price_line: bool = True, 
+            price_label: bool = True, 
+            group: str = '', 
+            legend_symbol: str = '◪', 
+            price_scale_id: Optional[str] = None
+        ) -> Area:
+        """
+        Creates and returns an Area object.
+        """
+        if not isinstance(legend_symbol, str):
+            raise TypeError("legend_symbol must be a string for Area series.")
+        
+        self._lines.append(Area(
+            self, name, top_color, bottom_color, invert, color, style, 
+            width, price_line, price_label, group, legend_symbol, price_scale_id
+        ))
+        return self._lines[-1]
+
+    def create_bar(
+            self, 
+            name: str = '', 
+            up_color: str = '#26a69a', 
+            down_color: str = '#ef5350',
+            open_visible: bool = True, 
+            thin_bars: bool = True,
+            price_line: bool = True, 
+            price_label: bool = True,
+            group: str = '', 
+            legend_symbol: Union[str, List[str]] = ['┌', '└'],
+            price_scale_id: Optional[str] = None
+        ) -> Bar:
+        """
+        Creates and returns a Bar object.
+        """
+        if not isinstance(legend_symbol, (str, list)):
+            raise TypeError("legend_symbol must be a string or list of strings for Bar series.")
+        if isinstance(legend_symbol, list) and not all(isinstance(symbol, str) for symbol in legend_symbol):
+            raise TypeError("Each item in legend_symbol list must be a string for Bar series.")
+        
+        return Bar(
+            self, name, up_color, down_color, open_visible, thin_bars, 
+            price_line, price_label, group, legend_symbol, price_scale_id
+        )
+
+    def create_custom_candle(
+            self,
+            name: str = '',
+            up_color: str = None,
+            down_color: str = None,
+            border_up_color='rgba(0,255,0,1)',
+            border_down_color='rgba(255,0,0,1)',
+            wick_up_color='rgba(0,255,0,1)',
+            wick_down_color='rgba(255,0,0,1)',
+            wick_visible: bool = True,
+            border_visible: bool = True,
+            bar_width: float = 0.8,
+            rounded_radius: Union[float, int] = 100,
+            shape: Literal[CANDLE_SHAPE] = "Rectangle",
+            combineCandles: int = 1,
+            line_width: int = 1,
+            line_style: LINE_STYLE = 'solid', 
+            price_line: bool = True,
+            price_label: bool = True,
+            group: str = '',
+            legend_symbol: Union[str, List[str]] = ['⑃', '⑂'],
+            price_scale_id: Optional[str] = None,
+        ) -> CustomCandle:
+        """
+        Creates and returns a CustomCandle object.
+        """
+        # Validate that legend_symbol is either a string or a list of two strings
+        if not isinstance(legend_symbol, (str, list)):
+            raise TypeError("legend_symbol must be a string or list of strings for CustomCandle series.")
+        if isinstance(legend_symbol, list) and len(legend_symbol) != 2:
+            raise ValueError("legend_symbol list must contain exactly two symbols for CustomCandle series.")
+
+        return CustomCandle(
+            self,
+            name=name,
+            up_color=up_color or border_up_color,
+            down_color=down_color or border_down_color,
+            border_up_color=border_up_color or up_color,
+            border_down_color=border_down_color or down_color,
+            wick_up_color=wick_up_color or border_up_color or border_up_color,
+            wick_down_color=wick_down_color or border_down_color or border_down_color,
+            wick_visible=wick_visible,
+            border_visible=border_visible,
+            bar_width=bar_width,
+            radius=rounded_radius,
+            shape=shape,
+            combineCandles=combineCandles,
+            line_style= line_style,
+            line_width= line_width,
+            price_line=price_line,
+            price_label=price_label,
+            group=group,
+            legend_symbol=legend_symbol,
+            price_scale_id=price_scale_id,
+        )
+        
+    #def plot_position(
+    #        self,
+    #        name: str = 'Position',
+    #        side: str = 'long',
+    #        mode: str = 'relative',
+    #        background_color_stop: str = 'rgba(255,0,0,0.2)',
+    #        background_color_target: str = 'rgba(0,255,0,0.2)',
+    #        price_line: bool = True,
+    #        price_label: bool = True,
+    #        group: str = 'Position',
+    #        legend_symbol: str = '$',
+    #        auto: bool = 'true'
+    #    ) -> 'PositionPlot':
+    #        """
+    #        Creates and returns a PositionPlot (Trade) object.
+#
+    #        :param name: Name of the trade series.
+    #        :param side: 'long' or 'short'.
+    #        :param mode: 'relative' or 'absolute'.
+    #        :param background_color_stop: Gradient color for entry-stop line.
+    #        :param background_color_target: Gradient color for entry-target line.
+    #        :param price_line: Show the price line.
+    #        :param price_label: Show the price label on the scale.
+    #        :param group: Legend group.
+    #        :param legend_symbol: Symbol for the legend.
+    #        """
+    #        self._lines.append(PositionPlot(
+    #            self,
+    #            name,
+    #            side,
+    #            mode,
+    #            background_color_stop,
+    #            background_color_target,
+    #            price_line,
+    #            price_label,
+    #            group,
+    #            legend_symbol,
+    #            auto
+    #        ))
+    #        return self._lines[-1]
+
+
+    
     def lines(self) -> List[Line]:
         """
         Returns all lines for the chart.
