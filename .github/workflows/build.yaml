@@ -46,8 +46,8 @@ jobs:
 
       - name: Commit and Push Changes
         run: |
-          tree
-          git --no-pager diff
+          git --no-pager log
+          git diff --name-only
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add lightweight_charts_/js/bundle.js lightweight_charts/js/bundle.js lightweight_charts/js/lightweight-charts.js lightweight_charts/js/styles.css
