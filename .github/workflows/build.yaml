@@ -46,7 +46,7 @@ jobs:
 
       - name: Commit and Push Changes
         run: |
-          git --no-pager log
+          git --no-pager status
           git diff --name-only
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
