@@ -17,9 +17,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: true  # Use the repo token for pushing changes
+        uses: actions/checkout@v4.2.2
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
@@ -48,7 +46,8 @@ jobs:
 
       - name: Commit and Push Changes
         run: |
-          git diff
+          tree
+          git --no-pager diff
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add lightweight_charts_/js/bundle.js lightweight_charts/js/bundle.js lightweight_charts/js/lightweight-charts.js lightweight_charts/js/styles.css
