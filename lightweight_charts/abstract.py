@@ -255,19 +255,31 @@ class SeriesCommon(Pane):
             {"time": "2021-01-22", "position": "below", "shape": "circle", "color": "#2196F3", "text": ""},
             ...
         ]
+        Some parameters are optional and have default values:
+        text : ""
+        size : 1
+
+        For more info please refer to:
+        https://tradingview.github.io/lightweight-charts/docs/api/interfaces/SeriesMarker#properties
+
         :return: a list of marker ids.
         """
         markers = markers.copy()
         marker_ids = []
         for marker in markers:
             marker_id = self.win._id_gen.generate()
-            self.markers[marker_id] = {
-                "time": self._single_datetime_format(marker['time']),
-                "position": marker_position(marker['position']),
-                "color": marker['color'],
-                "shape": marker_shape(marker['shape']),
-                "text": marker['text'],
+            m = {
+                'time': self._single_datetime_format(marker['time']),
+                'position': marker_position(marker['position']),
+                'color': marker['color'],
+                'shape': marker_shape(marker['shape']),
             }
+            for k, v in marker.items():
+                match(k):
+                    case 'text' | 'size':
+                        m[k] = v
+
+            self.markers[marker_id] = m.copy()
             marker_ids.append(marker_id)
         self._update_markers()
         return marker_ids
