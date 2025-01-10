@@ -255,34 +255,51 @@ class SeriesCommon(Pane):
             {"time": "2021-01-21", "position": "below", "shape": "circle", "color": "#2196F3", "text": ""},
             {"time": "2021-01-22", "position": "below", "shape": "circle", "color": "#2196F3", "text": ""},
             ...
-        ]
+        ]\n
+        Detailed description of the parameters:
+        time: Time location of the marker.
+        position: The position of the marker.
+        color: The color of the marker (rgb, rgba or hex).
+        shape: The shape of the marker.
+        text: Optional text to be placed with the marker.
+        size: The size of the marker (default is 1) .
+
+        For more info please refer to:
+        https://tradingview.github.io/lightweight-charts/docs/api/interfaces/SeriesMarker#properties
+
         :return: a list of marker ids.
         """
         markers = markers.copy()
         marker_ids = []
         for marker in markers:
             marker_id = self.win._id_gen.generate()
-            self.markers[marker_id] = {
-                "time": self._single_datetime_format(marker['time']),
-                "position": marker_position(marker['position']),
-                "color": marker['color'],
-                "shape": marker_shape(marker['shape']),
-                "text": marker['text'],
+            m = {
+                'time': self._single_datetime_format(marker['time']),
+                'position': marker_position(marker['position']),
+                'color': marker['color'],
+                'shape': marker_shape(marker['shape']),
             }
+            for k, v in marker.items():
+                match(k):
+                    case 'text' | 'size':
+                        m[k] = v
+
+            self.markers[marker_id] = m.copy()
             marker_ids.append(marker_id)
         self._update_markers()
         return marker_ids
 
     def marker(self, time: Optional[datetime] = None, position: MARKER_POSITION = 'below',
-               shape: MARKER_SHAPE = 'arrow_up', color: str = '#2196F3', text: str = ''
-               ) -> str:
+               shape: MARKER_SHAPE = 'arrow_up', color: str = '#2196F3', text: str | None = None,
+               size: NUM | None = None) -> str:
         """
         Creates a new marker.\n
         :param time: Time location of the marker. If no time is given, it will be placed at the last bar.
         :param position: The position of the marker.
         :param color: The color of the marker (rgb, rgba or hex).
         :param shape: The shape of the marker.
-        :param text: The text to be placed with the marker.
+        :param text: Optional text to be placed with the marker.
+        :param size: The size of the marker (default is 1) .
         :return: The id of the marker placed.
         """
         try:
@@ -291,13 +308,18 @@ class SeriesCommon(Pane):
             raise TypeError('Chart marker created before data was set.')
         marker_id = self.win._id_gen.generate()
 
-        self.markers[marker_id] = {
-            "time": formatted_time,
-            "position": marker_position(position),
-            "color": color,
-            "shape": marker_shape(shape),
-            "text": text,
+        m = {
+            'time': formatted_time,
+            'position': marker_position(position),
+            'color': color,
+            'shape': marker_shape(shape),
         }
+        if text is not None:
+            m['text'] = text
+        if size is not None:
+            m['size'] = size
+
+        self.markers[marker_id] = m
         self._update_markers()
         return marker_id
 
