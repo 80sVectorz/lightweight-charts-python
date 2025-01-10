@@ -30,6 +30,9 @@ jobs:
       - name: Install npm Dependencies
         run: npm install
 
+      - name: bundle.js hash before
+        run: sha256sum lightweight_charts_/js/bundle.js
+
       - name: Run Build Script
         run: ./build.sh
 
@@ -43,6 +46,9 @@ jobs:
       #         lightweight_charts/js/styles.css
       #       commit-msg: Update resources
       #       github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: bundle.js hash after
+        run: sha256sum lightweight_charts_/js/bundle.js
 
       - name: Commit and Push Changes
         run: |
