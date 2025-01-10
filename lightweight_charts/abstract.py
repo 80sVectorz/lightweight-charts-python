@@ -254,10 +254,14 @@ class SeriesCommon(Pane):
             {"time": "2021-01-21", "position": "below", "shape": "circle", "color": "#2196F3", "text": ""},
             {"time": "2021-01-22", "position": "below", "shape": "circle", "color": "#2196F3", "text": ""},
             ...
-        ]
-        Some parameters are optional and have default values:
-        text : ""
-        size : 1
+        ]\n
+        Detailed description of the parameters:
+        time: Time location of the marker.
+        position: The position of the marker.
+        color: The color of the marker (rgb, rgba or hex).
+        shape: The shape of the marker.
+        text: Optional text to be placed with the marker.
+        size: The size of the marker (default is 1) .
 
         For more info please refer to:
         https://tradingview.github.io/lightweight-charts/docs/api/interfaces/SeriesMarker#properties
@@ -304,10 +308,10 @@ class SeriesCommon(Pane):
         marker_id = self.win._id_gen.generate()
 
         m = {
-            "time": formatted_time,
-            "position": marker_position(position),
-            "color": color,
-            "shape": marker_shape(shape),
+            'time': formatted_time,
+            'position': marker_position(position),
+            'color': color,
+            'shape': marker_shape(shape),
         }
         if text is not None:
             m['text'] = text
