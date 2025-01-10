@@ -30,7 +30,7 @@ log_info("Deleted old build files.")
 # 2. Run Rollup
 log_info("Running Rollup...")
 try:
-    subprocess.run(['npx', 'rollup', '-c', 'rollup.config.js'], check=True)
+    subprocess.run(['npx', 'rollup', '-c', 'rollup.config.js'], check=True, shell=True)
     log_success("Rollup build completed successfully.")
 except subprocess.CalledProcessError:
     log_error("Rollup build failed.")
